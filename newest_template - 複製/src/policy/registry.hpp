@@ -16,6 +16,7 @@
 #include "minimax.hpp"
 // Expose the alpha-beta policy to the algorithm registry.
 #include "alpha_beta.hpp"
+#include "pvs.hpp"
 #include "random.hpp"
 
 struct AlgoEntry {
@@ -42,6 +43,14 @@ inline const std::vector<AlgoEntry>& get_algo_table(){
             AlphaBeta::param_defs(),
             [](State* s, int d, GameHistory& h, SearchContext& c){
                 return AlphaBeta::search(s, d, h, c);
+            }
+        },
+        {
+            "pvs",
+            PVS::default_params(),
+            PVS::param_defs(),
+            [](State* s, int d, GameHistory& h, SearchContext& c){
+                return PVS::search(s, d, h, c);
             }
         },
         {
