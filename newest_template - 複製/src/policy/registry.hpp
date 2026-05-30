@@ -14,6 +14,8 @@
 #include "search_types.hpp"
 #include "game_history.hpp"
 #include "minimax.hpp"
+// Expose the alpha-beta policy to the algorithm registry.
+#include "alpha_beta.hpp"
 #include "random.hpp"
 
 struct AlgoEntry {
@@ -31,6 +33,15 @@ inline const std::vector<AlgoEntry>& get_algo_table(){
             MiniMax::param_defs(),
             [](State* s, int d, GameHistory& h, SearchContext& c){
                 return MiniMax::search(s, d, h, c);
+            }
+        },
+        // Register alpha_beta as a selectable tree-search algorithm.
+        {
+            "alpha_beta",
+            AlphaBeta::default_params(),
+            AlphaBeta::param_defs(),
+            [](State* s, int d, GameHistory& h, SearchContext& c){
+                return AlphaBeta::search(s, d, h, c);
             }
         },
         {
