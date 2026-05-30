@@ -17,6 +17,7 @@
 // Expose the alpha-beta policy to the algorithm registry.
 #include "alpha_beta.hpp"
 #include "pvs.hpp"
+#include "quiescence.hpp"
 #include "random.hpp"
 
 struct AlgoEntry {
@@ -51,6 +52,14 @@ inline const std::vector<AlgoEntry>& get_algo_table(){
             PVS::param_defs(),
             [](State* s, int d, GameHistory& h, SearchContext& c){
                 return PVS::search(s, d, h, c);
+            }
+        },
+        {
+            "quiescence",
+            Quiescence::default_params(),
+            Quiescence::param_defs(),
+            [](State* s, int d, GameHistory& h, SearchContext& c){
+                return Quiescence::search(s, d, h, c);
             }
         },
         {
