@@ -57,6 +57,47 @@ static int king_tropism(
     return 0;
 }
 
+// Mirror black pieces to reuse white-oriented piece-square tables.
+static int piece_square_bonus(int owner, int piece, int row, int col){
+    int pst_row = (owner == 0) ? row : (BOARD_H - 1 - row);
+    return pst[piece - 1][pst_row][col];
+}
+
+// Count non-king material for the MAX_STEP tie-break rule.
+static int endgame_material(const Board& board, int player){
+    int score = 0;
+    for(int i = 0; i < BOARD_H; i++){
+        for(int j = 0; j < BOARD_W; j++){
+            int piece = board.board[player][i][j];
+            if(piece && piece != 6){
+                score += simple_material[piece];
+            }
+        }
+    }
+    return score;
+}
+
+// Locate both kings once so evaluation can score king pressure and safety.
+static void find_kings(
+    const Board& board,
+    int& white_kr, int& white_kc,
+    int& black_kr, int& black_kc
+){
+    white_kr = white_kc = black_kr = black_kc = -1;
+    for(int i = 0; i < BOARD_H; i++){
+        for(int j = 0; j < BOARD_W; j++){
+            if(board.board[0][i][j] == 6){
+                white_kr = i;
+                white_kc = j;
+            }
+            if(board.board[1][i][j] == 6){
+                black_kr = i;
+                black_kc = j;
+            }
+        }
+    }
+}
+
 
 /*============================================================
  * evaluate() — runtime-selectable eval strategy
@@ -67,20 +108,52 @@ int State::evaluate(
     bool use_mobility,
     const GameHistory* history
 ){
-    (void)history; // just to suppress warning
-
     // [ Hackathon TODO 1-1 ]
     // if in win state, return max score(you can check base_state.hpp for max score)
+    if(this->game_state == WIN){
+        return P_MAX;
+    }
     
     auto self_board = this->board.board[this->player];
     auto oppn_board = this->board.board[1 - this->player];
     int self_score = 0, oppn_score = 0;
+    int self_kr = -1, self_kc = -1;
+    int oppn_kr = -1, oppn_kc = -1;
+    int white_kr, white_kc, black_kr, black_kc;
+
+    // Precompute king positions for both sides.
+    find_kings(this->board, white_kr, white_kc, black_kr, black_kc);
+
+    // Convert absolute king positions into current-player perspective.
+    self_kr = (this->player == 0) ? white_kr : black_kr;
+    self_kc = (this->player == 0) ? white_kc : black_kc;
+    oppn_kr = (this->player == 0) ? black_kr : white_kr;
+    oppn_kc = (this->player == 0) ? black_kc : white_kc;
+
+    // Missing kings are treated as terminal-like states.
+    if(self_kr < 0){
+        return M_MAX;
+    }
+    if(oppn_kr < 0){
+        return P_MAX;
+    }
+
+    // Apply the simplified 50-step rule using material comparison.
+    if(this->step >= MAX_STEP){
+        int self_endgame = endgame_material(this->board, this->player);
+        int oppn_endgame = endgame_material(this->board, 1 - this->player);
+        if(self_endgame > oppn_endgame){
+            return P_MAX / 2 + self_endgame - oppn_endgame;
+        }
+        if(self_endgame < oppn_endgame){
+            return M_MAX / 2 - (oppn_endgame - self_endgame);
+        }
+        return 0;
+    }
 
     if(use_kp_eval){
         /* === KP eval: material + PST + tropism === */
 
-        int self_kr = -1, self_kc = -1;
-        int oppn_kr = -1, oppn_kc = -1;
         // [ Hackathon TODO 1-3 ]
         // get the position for player's king and opponent's king
 
@@ -88,22 +161,90 @@ int State::evaluate(
         // sum player/opponent pieces' value and add to score
         // if enemy king is still on the board, you should also call king_tropism for your pieces and add the value to score
         // king_tropism is already given above
+        // Add material, positional value, and king-pressure score.
+        for(int i = 0; i < BOARD_H; i++){
+            for(int j = 0; j < BOARD_W; j++){
+                int self_piece = self_board[i][j];
+                int oppn_piece = oppn_board[i][j];
+                if(self_piece){
+                    self_score += kp_material[self_piece];
+                    self_score += piece_square_bonus(this->player, self_piece, i, j);
+                    self_score += king_tropism(self_piece, i, j, oppn_kr, oppn_kc);
+                }
+                if(oppn_piece){
+                    oppn_score += kp_material[oppn_piece];
+                    oppn_score += piece_square_bonus(1 - this->player, oppn_piece, i, j);
+                    oppn_score += king_tropism(oppn_piece, i, j, self_kr, self_kc);
+                }
+            }
+        }
 
     }else{
         /* === Simple material-only eval === */
 
         // [ Hackathon TODO 1-2 ]
         // Simply add each piece's value to score
+        // Use only the simple material table in the basic mode.
+        for(int i = 0; i < BOARD_H; i++){
+            for(int j = 0; j < BOARD_W; j++){
+                int self_piece = self_board[i][j];
+                int oppn_piece = oppn_board[i][j];
+                if(self_piece){
+                    self_score += simple_material[self_piece];
+                }
+                if(oppn_piece){
+                    oppn_score += simple_material[oppn_piece];
+                }
+            }
+        }
 
     }
 
     int bonus = 0;
+
+    // Discourage repeated positions when ahead and prefer them when behind.
+    if(history){
+        int repeated = history->count(this->hash());
+        if(repeated >= 3){
+            return 0;
+        }
+        if(repeated >= 2){
+            int self_endgame = endgame_material(this->board, this->player);
+            int oppn_endgame = endgame_material(this->board, 1 - this->player);
+            if(self_endgame > oppn_endgame){
+                bonus -= 30;
+            }else if(self_endgame < oppn_endgame){
+                bonus += 30;
+            }else{
+                bonus -= 5;
+            }
+        }
+    }
 
     /* === Mobility bonus === */
     if(use_mobility){
         // [ Hackathon TODO 1-5 ]
         // you can calculate mobility by legal actions size
         // bonus += 2 * (self_mobility - oppn_mobility);
+        // Compare legal move counts to reward flexible positions.
+        State self_state(this->board, this->player);
+        self_state.step = this->step;
+        self_state.get_legal_actions();
+
+        State oppn_state(this->board, 1 - this->player);
+        oppn_state.step = this->step;
+        oppn_state.get_legal_actions();
+
+        if(self_state.game_state == WIN){
+            return P_MAX;
+        }
+        if(oppn_state.game_state == WIN){
+            bonus -= 80;
+        }
+
+        int self_mobility = (int)self_state.legal_actions.size();
+        int oppn_mobility = (int)oppn_state.legal_actions.size();
+        bonus += 2 * (self_mobility - oppn_mobility);
 
     }
 
@@ -201,6 +342,8 @@ State* State::next_state(const Move& move){
     next.board[p][to.first][to.second] = moved;
 
     State* ns = new State(next, opp);
+    // Carry the move counter into the child state.
+    ns->step = this->step + 1;
     ns->zobrist_hash = h;
     ns->zobrist_valid = true;
     return ns;
@@ -647,6 +790,8 @@ std::string State::encode_state(){
 
 BaseState* State::create_null_state() const{
     State* s = new State(this->board, 1 - this->player);
+    // Null moves still advance the move counter.
+    s->step = this->step + 1;
     s->get_legal_actions();
     return s;
 }
