@@ -397,7 +397,7 @@ python cli/cli.py --white human --black build/minichess-ubgi --time 2000
 python cli/cli.py --white build/minichess-ubgi --black build/minichess-ubgi --depth 8
 
 # CLI: pick algorithms per side
-python cli/cli.py --white build/minichess-ubgi --black build/minichess-ubgi --white-algo minimax --black-algo random --games 100 --time 2000
+python -m cli.cli --white build/minichess-ubgi.exe --black build/minichess-ubgi.exe --white-algo minimax --black-algo random --games 10 --depth 5
 ```
 
 ---
