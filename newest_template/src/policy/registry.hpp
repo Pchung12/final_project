@@ -20,6 +20,8 @@
 #include "quiescence.hpp"
 #include "random.hpp"
 #include "submission.hpp"
+#include "submission1.hpp"
+#include "test.hpp"
 
 struct AlgoEntry {
     std::string name;
@@ -69,6 +71,22 @@ inline const std::vector<AlgoEntry>& get_algo_table(){
             Submission::param_defs(),
             [](State* s, int d, GameHistory& h, SearchContext& c){
                 return Submission::search(s, d, h, c);
+            }
+        },
+        {
+            "submission1",
+            Submission1::default_params(),
+            Submission1::param_defs(),
+            [](State* s, int d, GameHistory& h, SearchContext& c){
+                return Submission1::search(s, d, h, c);
+            }
+        },
+        {
+            "test",
+            Test::default_params(),
+            Test::param_defs(),
+            [](State* s, int d, GameHistory& h, SearchContext& c){
+                return Test::search(s, d, h, c);
             }
         },
         {
